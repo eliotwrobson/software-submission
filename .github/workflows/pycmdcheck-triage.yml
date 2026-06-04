@@ -25,7 +25,7 @@ jobs:
       contents: read
       issues: write
     env:
-      PYCMDCHECK_VERSION: "0.1.0"
+      PYCMDCHECK_SOURCE: "git+https://github.com/coatless-py-pkg/pycmdcheck.git@054d7ff"
 
     steps:
       - name: Check out workflow repository
@@ -169,8 +169,7 @@ jobs:
         if: steps.parse.outputs.is_valid == 'true'
         id: triage
         run: |
-          set +e
-          uvx --from "pycmdcheck==${PYCMDCHECK_VERSION}" pycmdcheck check submitted-package \
+          uvx --from "${PYCMDCHECK_SOURCE}" pycmdcheck check submitted-package \
             --format json \
             --output pycmdcheck-results.json \
             --only ST001 \
@@ -199,10 +198,7 @@ jobs:
             --only RL003 \
             --only TS001 \
             --only TS004
-          exit_code=$?
-          set -e
-
-          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "exit_code=0" >> "$GITHUB_OUTPUT"
 
       - name: Check for CI configuration
         if: steps.parse.outputs.is_valid == 'true'
