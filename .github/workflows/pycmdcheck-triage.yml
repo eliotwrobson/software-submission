@@ -57,6 +57,22 @@ jobs:
               return match ? match[1].trim() : '';
             }
 
+            function extractRepositoryUrl(rawValue) {
+              if (!rawValue) {
+                return '';
+              }
+
+              const trimmed = rawValue.trim();
+
+              // Handle markdown link syntax: [label](https://github.com/owner/repo)
+              const markdownMatch = trimmed.match(/\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/i);
+              if (markdownMatch) {
+                return markdownMatch[1];
+              }
+
+              return trimmed;
+            }
+
             function normalizeRepositoryLink(rawValue) {
               if (!rawValue) {
                 return { isValid: false, error: 'No `Repository Link:` value was provided in the issue body.' };
@@ -104,7 +120,9 @@ jobs:
 
             const packageName = getField('Package Name') || 'Unknown package';
             const submittedVersion = getField('Version submitted');
-            const repositoryLink = getField('Repository Link');
+            const repositoryLinkRaw =
+              getField('Repository Link') || getField('Repository Link (if existing)');
+            const repositoryLink = extractRepositoryUrl(repositoryLinkRaw);
             const normalized = normalizeRepositoryLink(repositoryLink);
 
             core.setOutput('package_name', packageName);
