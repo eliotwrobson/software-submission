@@ -169,36 +169,27 @@ jobs:
         if: steps.parse.outputs.is_valid == 'true'
         id: triage
         run: |
-          uvx --from "${PYCMDCHECK_SOURCE}" pycmdcheck check submitted-package \
-            --format json \
-            --output pycmdcheck-results.json \
-            --only ST001 \
-            --only ST002 \
-            --only ST003 \
-            --only ST004 \
-            --only ST005 \
-            --only ST006 \
-            --only ST007 \
-            --only MT001 \
-            --only MT002 \
-            --only MT003 \
-            --only MT004 \
-            --only MT005 \
-            --only MT006 \
-            --only MT007 \
-            --only MT008 \
-            --only MT009 \
-            --only MT010 \
-            --only DC001 \
-            --only DC002 \
-            --only DC003 \
-            --only DC004 \
-            --only RL001 \
-            --only RL002 \
-            --only RL003 \
-            --only TS001 \
-            --only TS004
-          echo "exit_code=0" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          exit_code=0
+
+          if ! uvx --from "${PYCMDCHECK_SOURCE}" pycmdcheck submitted-package \
+            --json \
+            -c metadata \
+            -c structure \
+            -c docs \
+            -c license \
+            -c version \
+            -c py_typed \
+            > pycmdcheck-results.json; then
+            exit_code=$?
+          fi
+
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+          # Fail the step/job on pycmdcheck runtime or dependency resolution errors.
+          if [ "$exit_code" -ne 0 ]; then
+            exit "$exit_code"
+          fi
 
       - name: Check for CI configuration
         if: steps.parse.outputs.is_valid == 'true'
@@ -251,7 +242,10 @@ jobs:
             const ciMessage = process.env.CI_MESSAGE || '';
 
             function renderFailure(result) {
-              const parts = [`- **${result.check_id}**`, `(${result.severity}, ${result.status})`];
+              const checkId = result.check_id || result.name || 'unknown';
+              const severity = result.severity || result.status || 'unknown';
+              const status = result.status || 'unknown';
+              const parts = [`- **${checkId}**`, `(${severity}, ${status})`];
               if (result.message) {
                 parts.push(`: ${result.message}`);
               }
@@ -259,6 +253,8 @@ jobs:
               let line = parts.join(' ');
               if (result.hint) {
                 line += `\n  Hint: ${result.hint}`;
+              } else if (Array.isArray(result.details) && result.details.length > 0) {
+                line += `\n  Details: ${result.details.slice(0, 3).join(' | ')}`;
               }
               return line;
             }
@@ -304,10 +300,12 @@ jobs:
 
             const summary = results.summary || {};
             body += '\n### Summary\n';
-            body += `- Passed: ${summary.passed ?? 0}\n`;
-            body += `- Failed: ${summary.failed ?? 0}\n`;
-            body += `- Warnings: ${summary.warnings ?? 0}\n`;
-            body += `- Notes: ${summary.notes ?? 0}\n`;
+            body += `- OK: ${summary.ok ?? summary.passed ?? 0}\n`;
+            body += `- Errors: ${summary.error ?? summary.failed ?? 0}\n`;
+            body += `- Warnings: ${summary.warning ?? summary.warnings ?? 0}\n`;
+            body += `- Notes: ${summary.note ?? summary.notes ?? 0}\n`;
+            body += `- Skipped: ${summary.skipped ?? 0}\n`;
+            body += `- Overall passed: ${results.passed === true ? 'yes' : 'no'}\n`;
             body += `- Exit code: ${triageExitCode || 'unknown'}\n`;
 
             body += '\n### CI Configuration\n';
@@ -325,6 +323,12 @@ jobs:
                 if (result.status === 'failed' || result.status === 'errored') {
                   failures.push(result);
                 }
+              }
+            }
+
+            for (const result of results.results || []) {
+              if (result.status === 'error' || result.status === 'warning') {
+                failures.push(result);
               }
             }
 
@@ -351,8 +355,8 @@ jobs:
             }
 
             body += '\n### Scope\n';
-            body += '- Included: repository structure, packaging metadata, documentation presence, changelog/version checks, test directory presence, and test naming conventions.\n';
-            body += '- Excluded: test execution, coverage, import/build/install checks, dependency audits, and network-heavy link validation.\n';
+            body += '- Included: package metadata, repository structure, documentation presence, license checks, version consistency, and py.typed marker checks.\n';
+            body += '- Excluded: test execution, coverage, import/build/install checks, dependency audits, lint/type checks, and network-heavy link validation.\n';
 
             core.setOutput('body', body);
 
